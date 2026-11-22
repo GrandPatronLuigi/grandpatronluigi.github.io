@@ -133,6 +133,25 @@ main { position: relative; z-index: 1; }
 .cat .notice { margin-top: 0; max-width: none; }
 .howto { color: var(--muted); font-size: 15px; margin: 0; }
 
+.asklink { margin-left: auto; margin-right: 12px; font-family: var(--ui); font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; }
+.asklink:hover { border-color: var(--accent); }
+@media (max-width: 720px) { .asklink { font-size: 12px; padding: 6px 10px; margin-right: 6px; } }
+.ask { max-width: 820px; margin: 0 auto; padding: 48px max(16px, 3vw) 80px; display: grid; gap: 18px; }
+.ask h1 { font-family: var(--display); font-weight: 400; font-size: clamp(30px, 4.5vw, 48px); margin: 0; }
+.ask > p { color: var(--muted); margin: 0; }
+.ask .log { display: grid; gap: 12px; }
+.ask .msg { padding: 14px 18px; border-radius: 14px; border: 1px solid var(--line); line-height: 1.6; white-space: pre-wrap; }
+.ask .msg.me { background: var(--surface); justify-self: end; max-width: 85%; }
+.ask .msg.ai { border-left: 3px solid var(--accent); }
+.ask .msg.err { border-color: #d9534f; color: #f0a8a6; }
+.ask form { display: flex; gap: 10px; }
+.ask textarea { flex: 1; resize: vertical; min-height: 52px; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+.ask button { font-family: var(--ui); font-size: 15px; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: var(--bg); border: 0; border-radius: 999px; padding: 0 22px; cursor: pointer; }
+.ask button:disabled { opacity: .5; cursor: default; }
+.ask .ideas { display: flex; flex-wrap: wrap; gap: 8px; }
+.ask .ideas button { background: none; color: var(--ink); border: 1px solid var(--line); padding: 8px 14px; text-transform: none; letter-spacing: 0; font-family: var(--body); font-size: 15px; }
+.ask .go-art { justify-self: start; display: inline-block; background: var(--accent); color: var(--bg); text-decoration: none; border-radius: 999px; padding: 12px 24px; font-family: var(--ui); letter-spacing: .06em; text-transform: uppercase; }
+
 /* Univers */
 .shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); max-width: 1280px; margin: 0 auto; }
 aside.side {
@@ -291,6 +310,7 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
 <header class="top">
   <button class="toc-btn" id="tocBtn" type="button" aria-controls="side" aria-expanded="false" hidden>Sommaire</button>
   <a class="brand" href="#accueil">Recueil de <b>GPL</b></a>
+  <a class="asklink" href="#demander">Demander à Claude</a>
   <nav class="switch" aria-label="Choisir un univers">
     <a href="#qualdi" data-u="qualdi">Qualdi 512</a>
     <a href="#codex" data-u="codex">Codex Infinitum</a>
@@ -346,6 +366,7 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
     app.innerHTML = `<section class="home">
       <h1>Recueil des créations de GPL</h1>
       <p>Univers, récits, mods… tout ce que j'imagine, rassemblé au même endroit.</p>
+      <a class="quizcard" href="#demander" style="margin-top:0"><b>Demander à Claude →</b><span>Une question sur un personnage, un tome ou un mod ? Claude cherche la réponse dans les textes du site.</span></a>
       <section class="cat"><h2>Mes univers</h2><p>Chaque univers a ses couleurs, son sommaire et sa recherche.</p>
       <div class="worlds">${card("qualdi")}${card("codex")}</div></section>
       <section class="cat" id="mods"><h2>Mes mods Minecraft</h2>
@@ -550,12 +571,89 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
     app.querySelector(".change").onclick = () => { qz = null; renderQuizHome(); window.scrollTo(0,0); };
   }
 
+  const ART_URL = "https://claude.ai/artifact/JKHrib6iFH5bcrqRUg1gqM";
+  let chat = [];
+  let askP = null;
+  const askSample = () => askP || (askP = (async () => {
+    for (let i = 0; i < 20 && !(window.claude && typeof window.claude.use === "function"); i++) await new Promise(r => setTimeout(r, 100));
+    if (!(window.claude && typeof window.claude.use === "function")) return null;
+    try { return await window.claude.use("sample"); } catch (e) { return null; }
+  })());
+  const askTools = [
+    { name: "chercher", description: "Cherche un mot ou une expression dans tous les textes du site (Qualdi 512 et Codex Infinitum). Renvoie les pages qui le contiennent, avec un extrait.",
+      inputSchema: { type: "object", properties: { requete: { type: "string" } }, required: ["requete"] },
+      execute: ({ requete }) => {
+        const q = norm(String(requete || "").trim()); if (q.length < 2) return [];
+        const out = [];
+        for (const u of ["qualdi", "codex"]) for (const s of index[u]) {
+          if (s.n.indexOf(q) < 0) continue;
+          const j = norm(s.text).indexOf(q);
+          out.push({ id: s.id, univers: DATA[u].name, groupe: s.group, titre: s.title, extrait: j >= 0 ? s.text.slice(Math.max(0, j - 200), j + 300) : s.text.slice(0, 300) });
+          if (out.length >= 10) return out;
+        }
+        return out;
+      } },
+    { name: "lire", description: "Lit le texte d'une page du site à partir de son id (donné par chercher ou sommaire). Le texte peut être long : utilise debut pour lire la suite.",
+      inputSchema: { type: "object", properties: { id: { type: "string" }, debut: { type: "number" } }, required: ["id"] },
+      execute: ({ id, debut }) => {
+        const u = String(id).split("-")[0]; const s = (index[u] || []).find(x => x.id === id);
+        if (!s) throw new Error("Page introuvable : " + id);
+        const from = Math.max(0, debut | 0), part = s.text.slice(from, from + 12000);
+        return { titre: s.title, groupe: s.group, texte: part, suite: from + 12000 < s.text.length ? from + 12000 : null };
+      } },
+    { name: "sommaire", description: "Liste toutes les pages du site (id, univers, groupe, titre).",
+      execute: () => ["qualdi", "codex"].flatMap(u => index[u].map(s => ({ id: s.id, univers: DATA[u].name, groupe: s.group, titre: s.title }))) },
+  ];
+  const ASK_INSTR = () => `Tu es l'assistant du site « Recueil des créations de GPL ». Le site contient deux univers écrits par GPL : Qualdi 512 (monde, personnages, royaumes, histoire, et un récit en cours) et le Codex Infinitum (Tome 0 « Livre de Vérité » sur le lore, puis l'histoire principale en tomes et chapitres ; œuvre humoristique et parodique, réservée aux 16 ans et plus). Il présente aussi des mods Minecraft Bedrock : ${(DATA.mods || []).map(m => m.name + " (" + m.desc + ")").join(" ; ")}.
+Réponds en français, de façon claire, chaleureuse et un peu drôle. Pour toute question sur les univers, utilise d'abord les outils chercher, lire et sommaire, et appuie-toi uniquement sur ce que disent les textes du site : n'invente rien. Si l'information n'est pas sur le site, dis-le simplement. Indique à la fin le ou les titres des pages qui t'ont servi.`;
+  function renderAsk() {
+    setUniverse("home");
+    document.title = "Demander à Claude · Recueil des créations de GPL";
+    app.innerHTML = `<section class="ask"><h1>Demander à Claude</h1>
+      <p>Pose une question sur Qualdi 512, le Codex Infinitum ou les mods : Claude cherche la réponse dans les textes du site.</p>
+      <div id="askbody"><p class="tag">Chargement…</p></div></section>`;
+    const body = app.querySelector("#askbody");
+    askSample().then(sample => {
+      if (!sample) {
+        body.innerHTML = `<p>Les questions à Claude fonctionnent dans la version du site publiée sur Claude. Il faut un compte Claude (même gratuit).</p><p style="margin-top:14px"><a class="go-art" href="${ART_URL}" target="_blank" rel="noopener">Ouvrir le site dans Claude →</a></p>`;
+        return;
+      }
+      body.innerHTML = `<div class="log" id="log"></div>
+        <div class="ideas">${["Qui est Crimson ?", "Résume le Tome 1 du Codex", "C'est quoi le mod Titan dévastateur ?", "Qui est Isidora ?"].map(x => `<button type="button">${esc(x)}</button>`).join("")}</div>
+        <form id="askf"><textarea id="askq" placeholder="Ta question…" rows="2"></textarea><button id="asks">Envoyer</button></form>`;
+      const log = body.querySelector("#log"), f = body.querySelector("#askf"), ta = body.querySelector("#askq"), btn = body.querySelector("#asks");
+      const draw = () => { log.innerHTML = chat.map(m => `<div class="msg ${m.role === "user" ? "me" : (m.err ? "ai err" : "ai")}">${esc(m.content)}</div>`).join(""); };
+      draw();
+      let busy = false;
+      const send = async q => {
+        q = q.trim(); if (!q || busy) return;
+        busy = true; btn.disabled = true; ta.value = "";
+        chat.push({ role: "user", content: q });
+        const ans = { role: "assistant", content: "Je cherche dans les textes…" }; chat.push(ans); draw();
+        const bubble = log.lastElementChild;
+        const input = chat.filter(m => m !== ans && !m.err).map((m, i) => ({ role: m.role, content: i === 0 ? ASK_INSTR() + "\n\nQuestion : " + m.content : m.content }));
+        try {
+          const r = await sample(input, { tools: askTools, cache: false, onText: ({ text }) => { ans.content = text; bubble.textContent = text; } });
+          ans.content = r.text || ans.content;
+        } catch (e) {
+          ans.err = true;
+          ans.content = e && e.code === "rate_limited" ? "Trop de questions d'un coup, attends un peu avant de réessayer." : e && e.code === "not_granted" ? "Claude n'a pas l'autorisation de répondre ici." : "Oups, la réponse n'a pas pu arriver. Réessaie dans un instant.";
+        }
+        draw(); busy = false; btn.disabled = false; ta.focus();
+      };
+      f.addEventListener("submit", e => { e.preventDefault(); send(ta.value); });
+      ta.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(ta.value); } });
+      body.querySelectorAll(".ideas button").forEach(b => b.onclick = () => send(b.textContent));
+    });
+  }
+
   function route() {
     document.body.classList.remove("toc-open");
     tocBtn.setAttribute("aria-expanded", "false");
     const h = decodeURIComponent(location.hash.slice(1));
     if (!h || h === "accueil") renderHome();
     else if (h === "codex-quiz") { qz = null; renderQuizHome(); }
+    else if (h === "demander") renderAsk();
     else if (DATA[h] && DATA[h].groups) renderOverview(h);
     else if (groupsById[h]) renderGroup(groupsById[h].u, groupsById[h].g);
     else {
