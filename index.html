@@ -133,6 +133,12 @@ main { position: relative; z-index: 1; }
 .cat .notice { margin-top: 0; max-width: none; }
 .howto { color: var(--muted); font-size: 15px; margin: 0; }
 
+.comments { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); display: grid; gap: 12px; }
+.comments h2 { font-family: var(--ui); font-weight: 600; font-size: 15px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); margin: 0; }
+.comments .rules { color: var(--muted); font-size: 15px; line-height: 1.55; margin: 0; }
+.comments .rules b { color: var(--ink); }
+.home .comments { margin-top: 8px; }
+
 /* Univers */
 .shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); max-width: 1280px; margin: 0 auto; }
 aside.side {
@@ -358,6 +364,7 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
       <p class="howto">Pour installer un mod : télécharge le fichier puis ouvre-le, Minecraft l'importe tout seul. Active-le ensuite dans les paramètres de ton monde (packs de comportement et packs de ressources).</p></section>
       <section class="cat"><h2>Autres créations</h2><div class="soon">Bientôt ici.</div></section>
       <p class="foot">Créations imaginées par GPL.</p></section>`;
+    addComments("livre-d-or", "Livre d'or");
   }
 
   function sideHTML(u) {
@@ -414,6 +421,7 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
     app.innerHTML = `<div class="shell">${sideHTML(u)}<article class="read over"><div class="inner">
       <div class="crumb">${esc(d.kicker)}</div><h1>${esc(d.name)}</h1>
       <p class="tag">${esc(d.tagline)}</p>${u === "codex" ? `<aside class="notice age"><b>16 ans et plus</b> Le Codex Infinitum contient des drogues, des allusions sexuelles, de la violence gore et un langage très cru. Il est déconseillé aux moins de 16 ans.</aside><aside class="notice"><b>Avertissement</b> Le Codex Infinitum est une œuvre de fiction à visée humoristique. Certains personnages viennent d'autres univers existants (jeux vidéo, séries, films et autres) : ils appartiennent à leurs créateurs et sont utilisés ici dans un cadre parodique, comme une fan-fiction. Les personnes réelles qui y sont citées le sont sur le ton de la parodie : rien de ce qui est raconté à leur sujet n'est réel. De même, le Paradis, l'Enfer, les anges, les dieux et les autres figures religieuses qui y apparaissent sont utilisés de façon purement fictive : le Codex ne cherche à offenser aucune religion ni aucun croyant.</aside>` : ""}<div class="facts">${facts}</div>${u === "codex" && d.quiz ? `<a class="quizcard" href="#codex-quiz"><b>Le Grand Quiz du Codex →</b><span>${d.quiz.length} questions, adaptées au dernier tome que tu as lu. Zéro spoil.</span></a>` : ""}${groups}</div></article></div>`;
+    addComments(u, "Commentaires sur " + d.name);
     wireSide(u, u);
   }
 
@@ -427,6 +435,7 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
       <div class="crumb"><a href="#${u}">${esc(d.name)}</a>${g.sub ? " · " + esc(g.sub) : ""}</div><h1>${esc(g.label || g.name)}</h1>
       <p class="tag">${g.sections.length} chapitres${first ? ` · <a class="start" href="#${first.id}">Commencer la lecture →</a>` : ""}</p>
       <ol class="chaps">${list}</ol></div></article></div>`;
+    addComments(g.id, "Commentaires sur " + (g.label || g.name));
     wireSide(u, g.id);
   }
 
@@ -475,6 +484,7 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
         ${next ? `<a class="next" href="#${next.id}"><small>Suivant →</small><span>${esc(next.title)}</span></a>` : ""}
       </nav></div></article></div>`;
     app.querySelectorAll(".content table").forEach(t => { const w = document.createElement("div"); w.className = "tw"; t.parentNode.insertBefore(w, t); w.appendChild(t); });
+    addComments(id, "Commentaires sur cette page");
     wireSide(u, id);
     if (query.trim().length >= 2) highlight(app.querySelector(".content"), query.trim());
   }
@@ -548,6 +558,26 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
       ${miss.length ? `<h2 style="margin-top:30px">Tes erreurs</h2><div class="rev">${miss.map(a => `<div class="ko">${esc(a.q.q)}<span>Ta réponse : ${esc(a.pick)} · Bonne réponse : ${esc(a.q.a)}</span></div>`).join("")}</div>` : ""}`);
     app.querySelector(".again").onclick = () => { const lv = qz.lvl, n = store.get("quiz-n") || "10"; const p = shuffle(pool(lv)); const list = n === "all" ? p : p.slice(0, +n); qz = { lvl: lv, list: list.map(q => ({ ...q, o: shuffle([q.a, ...q.w]) })), i: 0, good: 0, ans: [] }; renderQuizQ(); window.scrollTo(0,0); };
     app.querySelector(".change").onclick = () => { qz = null; renderQuizHome(); window.scrollTo(0,0); };
+  }
+
+  function comments(term, title) {
+    const box = document.createElement("section");
+    box.className = "comments";
+    box.innerHTML = `<h2>${esc(title || "Commentaires")}</h2>
+      <p class="rules">Avis, questions, théories : tout est bienvenu ! Merci de rester <b>respectueux</b> : les messages insultants, haineux ou hors sujet seront supprimés. Évite aussi les spoilers sur les tomes suivants. Pour écrire, il faut se connecter avec un compte GitHub (gratuit). GPL pourra te répondre directement ici.</p>`;
+    const s = document.createElement("script");
+    const attrs = { src: "https://giscus.app/client.js", "data-repo": "GrandPatronLuigi/grandpatronluigi.github.io", "data-repo-id": "R_kgDOV2kIdg",
+      "data-category": "Announcements", "data-category-id": "DIC_kwDOV2kIds4DLuJ3", "data-mapping": "specific", "data-term": term, "data-strict": "1",
+      "data-reactions-enabled": "1", "data-emit-metadata": "0", "data-input-position": "top", "data-theme": "transparent_dark", "data-lang": "fr",
+      "data-loading": "lazy", crossorigin: "anonymous" };
+    for (const k in attrs) s.setAttribute(k, attrs[k]);
+    s.async = true;
+    box.appendChild(s);
+    return box;
+  }
+  function addComments(term, title) {
+    const host = app.querySelector(".inner") || app.querySelector(".home");
+    if (host) host.appendChild(comments(term, title));
   }
 
   function route() {
