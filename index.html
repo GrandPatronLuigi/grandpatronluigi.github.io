@@ -314,8 +314,6 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
 .music .mnow a{color:var(--accent)}
 .music .mnav{display:flex;gap:4px}
 .music .mnav button{width:28px;height:28px;font-size:14px}
-.music #ytWrap{width:240px;height:200px;border-radius:8px;overflow:hidden;background:#000}
-.music:not(.open) #ytWrap{position:fixed;left:-9999px;top:0}
 .music.open{border-radius:16px;align-items:flex-end}
 .music.open .mpanel{flex-wrap:wrap;max-width:260px}
 @media (max-width:600px){.music{right:10px;bottom:10px}.music input[type=range]{width:80px}}
@@ -340,10 +338,9 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
     <input type="range" id="musVol" min="0" max="100" step="1">
     <span class="mpct" id="musPct"></span>
     <div class="mnow" id="musNow">
-      <div id="ytWrap"><div id="ytPlayer"></div></div>
       <span><b id="musTitle"></b><br><span id="musArtist"></span></span>
       <div class="mnav"><button type="button" id="musPrev">⏮</button><button type="button" id="musNext">⏭</button>
-      <a id="musLink" href="#" target="_blank" rel="noopener">YouTube ↗</a></div>
+      </div>
     </div>
   </div>
   <button type="button" id="musBtn" aria-expanded="false" aria-controls="music">♪</button>
@@ -822,48 +819,36 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
         o.connect(g); g.connect(Music.bus); o.start(s); o.stop(s + 3.2);
       }
     }
-    // Musiques du Codex : vidéos officielles YouTube intégrées (la musique reste hébergée par les artistes)
+    // Musiques du Codex (titres et artistes crédités pour pouvoir les retrouver)
     const CODEX = [
-      { id: "Hn9Uo8Mswa4", t: "Dive!!", a: "A-One — The Strongest Battlegrounds (KJ's Official Theme Song)" },
-      { id: "6xUnSVTh8fI", t: "Ameno", a: "ERA" },
-      { id: "ax2nJkyhACs", t: "Barnaby Chase (Orchestral Update)", a: "Billie Bust Up" },
-      { id: "e-xToC9wNl0", t: "Enemy", a: "Tommee Profitt, Sam Tinnesz & Beacon Light" }
+      { f: "dive.mp3", t: "Dive!!", a: "A-One — The Strongest Battlegrounds (KJ's Official Theme Song)" },
+      { f: "ameno.mp3", t: "Ameno", a: "ERA" },
+      { f: "barnaby-chase.mp3", t: "Barnaby Chase (Orchestral Update)", a: "Billie Bust Up" },
+      { f: "enemy.mp3", t: "Enemy", a: "Tommee Profitt, Sam Tinnesz & Beacon Light" },
+      { f: "infinity-castle.mp3", t: "Infinity Castle Theme", a: "Demon Slayer (S4 E8 OST) — Go Shiina & Yuki Kajiura" }
     ];
-    let yt = null, ytReady = false, ytIdx = 0, ytLoading = false;
+    const au = new Audio(); au.preload = "none";
+    let ytIdx = 0;
     const useYT = () => uni === "codex";
     function ytInfo() {
       const tr = CODEX[ytIdx];
       document.getElementById("musTitle").textContent = tr.t;
       document.getElementById("musArtist").textContent = tr.a;
-      document.getElementById("musLink").href = "https://www.youtube.com/watch?v=" + tr.id;
     }
-    function ytLoad() {
-      if (ytLoading) return; ytLoading = true;
-      window.onYouTubeIframeAPIReady = () => {
-        yt = new YT.Player("ytPlayer", {
-          width: 240, height: 200, videoId: CODEX[ytIdx].id,
-          playerVars: { rel: 0, playsinline: 1, modestbranding: 1 },
-          events: {
-            onReady: () => { ytReady = true; ytSync(); },
-            onStateChange: e => { if (e.data === 0) ytGo(1); },
-            onError: () => ytGo(1)
-          }
-        });
-      };
-      const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(sc);
-    }
-    function ytGo(d) { ytIdx = (ytIdx + d + CODEX.length) % CODEX.length; ytInfo(); if (ytReady) { yt.loadVideoById(CODEX[ytIdx].id); ytSync(); } }
+    function ytGo(d) { ytIdx = (ytIdx + d + CODEX.length) % CODEX.length; ytInfo(); au.src = "music/" + CODEX[ytIdx].f; ytSync(); }
+    au.addEventListener("ended", () => ytGo(1));
+    au.addEventListener("error", () => { if (au.src) setTimeout(() => ytGo(1), 1000); });
     function ytSync() {
-      if (!ytReady) return;
-      if (useYT() && on && v > 0) { yt.setVolume(v); if (yt.getPlayerState() !== 1) yt.playVideo(); }
-      else if (yt.getPlayerState() === 1) yt.pauseVideo();
+      au.volume = Math.min(1, Math.pow(v / 100, 2) * 1.2);
+      if (useYT() && on && v > 0) { if (!au.src) au.src = "music/" + CODEX[ytIdx].f; if (au.paused) au.play().catch(() => {}); }
+      else if (!au.paused) au.pause();
     }
     document.getElementById("musPrev").addEventListener("click", () => ytGo(-1));
     document.getElementById("musNext").addEventListener("click", () => ytGo(1));
     ytInfo();
     function apply() {
       box.classList.toggle("yt", useYT());
-      if (useYT() && on) { if (!yt) ytLoad(); ytSync(); } else ytSync();
+      ytSync();
       if (!ctx) return;
       const target = on && !useYT() ? gainFor(v) : 0;
       master.gain.cancelScheduledValues(ctx.currentTime);
@@ -883,7 +868,7 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
     btn.addEventListener("click", () => { const o = !box.classList.contains("open"); box.classList.toggle("open", o); btn.setAttribute("aria-expanded", String(o)); });
     tog.addEventListener("click", () => { on = !on; if (on && v === 0) v = 8; store.set("musOn", on ? "1" : "0"); store.set("musVol", v); init(); apply(); ui(); });
     vol.addEventListener("input", () => { v = parseInt(vol.value, 10); if (v > 0) on = true; store.set("musVol", v); store.set("musOn", on ? "1" : "0"); init(); apply(); ui(); });
-    document.addEventListener("visibilitychange", () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else if (on && v > 0 && !useYT()) ctx.resume(); });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) { if (ctx) ctx.suspend(); if (!au.paused) au.pause(); } else { if (ctx && on && v > 0 && !useYT()) ctx.resume(); if (started) ytSync(); } });
     ui();
     return { ui, setUni(u) { if (u !== uni) { uni = u; step = 0; if (started) apply(); else box.classList.toggle("yt", useYT()); } } };
   })();
