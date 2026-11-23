@@ -308,6 +308,16 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
 .music input[type=range]{width:110px;accent-color:var(--accent)}
 .music .mpct{font-size:12px;color:var(--muted);min-width:32px;text-align:right}
 .music.off #musToggle{opacity:.55}
+.music .mnow{display:none;flex-direction:column;gap:4px;max-width:240px;font-size:12px;color:var(--muted)}
+.music.yt .mnow{display:flex}
+.music .mnow b{color:var(--fg,#eee);font-weight:600;font-size:13px}
+.music .mnow a{color:var(--accent)}
+.music .mnav{display:flex;gap:4px}
+.music .mnav button{width:28px;height:28px;font-size:14px}
+.music #ytWrap{width:240px;height:200px;border-radius:8px;overflow:hidden;background:#000}
+.music:not(.open) #ytWrap{position:fixed;left:-9999px;top:0}
+.music.open{border-radius:16px;align-items:flex-end}
+.music.open .mpanel{flex-wrap:wrap;max-width:260px}
 @media (max-width:600px){.music{right:10px;bottom:10px}.music input[type=range]{width:80px}}
 </style>
 </head>
@@ -329,6 +339,12 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
     <label class="sr" for="musVol" id="musVolLbl">Volume</label>
     <input type="range" id="musVol" min="0" max="100" step="1">
     <span class="mpct" id="musPct"></span>
+    <div class="mnow" id="musNow">
+      <div id="ytWrap"><div id="ytPlayer"></div></div>
+      <span><b id="musTitle"></b><br><span id="musArtist"></span></span>
+      <div class="mnav"><button type="button" id="musPrev">⏮</button><button type="button" id="musNext">⏭</button>
+      <a id="musLink" href="#" target="_blank" rel="noopener">YouTube ↗</a></div>
+    </div>
   </div>
   <button type="button" id="musBtn" aria-expanded="false" aria-controls="music">♪</button>
 </div>
@@ -806,28 +822,70 @@ figure.portrait figcaption{font-family:var(--ui);font-size:12px;letter-spacing:.
         o.connect(g); g.connect(Music.bus); o.start(s); o.stop(s + 3.2);
       }
     }
+    // Musiques du Codex : vidéos officielles YouTube intégrées (la musique reste hébergée par les artistes)
+    const CODEX = [
+      { id: "Hn9Uo8Mswa4", t: "Dive!!", a: "A-One — The Strongest Battlegrounds (KJ's Official Theme Song)" },
+      { id: "6xUnSVTh8fI", t: "Ameno", a: "ERA" },
+      { id: "ax2nJkyhACs", t: "Barnaby Chase (Orchestral Update)", a: "Billie Bust Up" },
+      { id: "e-xToC9wNl0", t: "Enemy", a: "Tommee Profitt, Sam Tinnesz & Beacon Light" }
+    ];
+    let yt = null, ytReady = false, ytIdx = 0, ytLoading = false;
+    const useYT = () => uni === "codex";
+    function ytInfo() {
+      const tr = CODEX[ytIdx];
+      document.getElementById("musTitle").textContent = tr.t;
+      document.getElementById("musArtist").textContent = tr.a;
+      document.getElementById("musLink").href = "https://www.youtube.com/watch?v=" + tr.id;
+    }
+    function ytLoad() {
+      if (ytLoading) return; ytLoading = true;
+      window.onYouTubeIframeAPIReady = () => {
+        yt = new YT.Player("ytPlayer", {
+          width: 240, height: 200, videoId: CODEX[ytIdx].id,
+          playerVars: { rel: 0, playsinline: 1, modestbranding: 1 },
+          events: {
+            onReady: () => { ytReady = true; ytSync(); },
+            onStateChange: e => { if (e.data === 0) ytGo(1); },
+            onError: () => ytGo(1)
+          }
+        });
+      };
+      const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(sc);
+    }
+    function ytGo(d) { ytIdx = (ytIdx + d + CODEX.length) % CODEX.length; ytInfo(); if (ytReady) { yt.loadVideoById(CODEX[ytIdx].id); ytSync(); } }
+    function ytSync() {
+      if (!ytReady) return;
+      if (useYT() && on && v > 0) { yt.setVolume(v); if (yt.getPlayerState() !== 1) yt.playVideo(); }
+      else if (yt.getPlayerState() === 1) yt.pauseVideo();
+    }
+    document.getElementById("musPrev").addEventListener("click", () => ytGo(-1));
+    document.getElementById("musNext").addEventListener("click", () => ytGo(1));
+    ytInfo();
     function apply() {
+      box.classList.toggle("yt", useYT());
+      if (useYT() && on) { if (!yt) ytLoad(); ytSync(); } else ytSync();
       if (!ctx) return;
-      const target = on ? gainFor(v) : 0;
+      const target = on && !useYT() ? gainFor(v) : 0;
       master.gain.cancelScheduledValues(ctx.currentTime);
       master.gain.setTargetAtTime(target, ctx.currentTime, 0.8);
-      if (on && v > 0) {
+      if (on && v > 0 && !useYT()) {
         if (ctx.state === "suspended") ctx.resume();
         if (!timer) { chord(); timer = setInterval(chord, 8000); }
       } else if (timer) {
-        setTimeout(() => { if (!(on && v > 0)) { clearInterval(timer); timer = null; } }, 2500);
+        setTimeout(() => { if (!(on && v > 0 && !useYT())) { clearInterval(timer); timer = null; } }, 2500);
       }
     }
-    function start() { if (!on) return; init(); apply(); }
+    function start() { if (!on) return; if (!useYT()) init(); apply(); }
     // Les navigateurs exigent un premier geste de l'utilisateur avant de jouer du son
-    const first = () => { start(); removeEventListener("pointerdown", first); removeEventListener("keydown", first); };
+    let started = false;
+    const first = () => { started = true; start(); removeEventListener("pointerdown", first); removeEventListener("keydown", first); };
     addEventListener("pointerdown", first); addEventListener("keydown", first);
     btn.addEventListener("click", () => { const o = !box.classList.contains("open"); box.classList.toggle("open", o); btn.setAttribute("aria-expanded", String(o)); });
     tog.addEventListener("click", () => { on = !on; if (on && v === 0) v = 8; store.set("musOn", on ? "1" : "0"); store.set("musVol", v); init(); apply(); ui(); });
     vol.addEventListener("input", () => { v = parseInt(vol.value, 10); if (v > 0) on = true; store.set("musVol", v); store.set("musOn", on ? "1" : "0"); init(); apply(); ui(); });
-    document.addEventListener("visibilitychange", () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else if (on && v > 0) ctx.resume(); });
+    document.addEventListener("visibilitychange", () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else if (on && v > 0 && !useYT()) ctx.resume(); });
     ui();
-    return { ui, setUni(u) { if (u !== uni) { uni = u; step = 0; } } };
+    return { ui, setUni(u) { if (u !== uni) { uni = u; step = 0; if (started) apply(); else box.classList.toggle("yt", useYT()); } } };
   })();
   addEventListener("hashchange", route);
   setLang(LANG, true).then(route);
